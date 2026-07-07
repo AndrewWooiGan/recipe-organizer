@@ -136,6 +136,47 @@
     font-size: .88rem; box-shadow: var(--shadow-lg); z-index: 99; opacity: 0; transition: opacity .25s; pointer-events: none;
   }
   .toast.show { opacity: 1; }
+  .tabs { max-width: 1100px; margin: 14px auto 0; padding: 0 20px; display: flex; gap: 8px; }
+  .tab {
+    border: 1px solid var(--border); background: var(--card); border-radius: 99px;
+    padding: 8px 18px; font-size: .9rem; font-weight: 600; cursor: pointer; color: var(--muted);
+  }
+  .tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .week-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .week-nav #weekLabel { font-weight: 700; font-size: 1.02rem; }
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .day {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 180px;
+  }
+  .day.today { outline: 2px solid var(--accent); }
+  .day-head { font-size: .82rem; font-weight: 800; text-align: center; }
+  .day-head small { display: block; font-weight: 500; color: var(--muted); }
+  .slot { border-top: 1px dashed var(--border); padding-top: 6px; }
+  .slot-label { font-size: .68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+  .plan-item {
+    display: flex; align-items: center; gap: 6px; background: var(--accent-soft);
+    border-radius: 8px; padding: 4px 6px; margin-bottom: 4px; font-size: .78rem; font-weight: 600;
+  }
+  .plan-item img { width: 26px; height: 26px; border-radius: 6px; object-fit: cover; flex: none; }
+  .plan-item .pi-title { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .plan-remove { border: none; background: none; cursor: pointer; color: var(--muted); font-size: .85rem; padding: 0 2px; }
+  .slot-add {
+    border: 1px dashed var(--border); background: none; border-radius: 8px; width: 100%;
+    padding: 3px; font-size: .75rem; color: var(--muted); cursor: pointer;
+  }
+  .slot-add:hover { border-color: var(--accent); color: var(--accent); }
+  body.locked .slot-add, body.locked .plan-remove { display: none; }
+  .picker-list { max-height: 320px; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .picker-row {
+    display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--border);
+    border-radius: 10px; cursor: pointer; font-size: .88rem; font-weight: 600;
+  }
+  .picker-row:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .picker-row img { width: 42px; height: 42px; border-radius: 8px; object-fit: cover; flex: none; }
+  .picker-row .pr-emoji { width: 42px; height: 42px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; flex: none; font-size: 1.2rem; }
+  @media (max-width: 900px) { .week { grid-template-columns: 1fr 1fr; } .day { min-height: 0; } }
+  @media (max-width: 560px) { .week { grid-template-columns: 1fr; } }
   .sync-dot { width: 9px; height: 9px; border-radius: 99px; display: inline-block; background: #c9c1b5; }
   .sync-dot.ok { background: #2e9e5b; }
   .sync-dot.sync { background: #e8a13c; animation: pulse 1s infinite; }
@@ -166,6 +207,11 @@
   </div>
 </header>
 
+<div class="tabs">
+  <button class="tab active" id="tabRecipes">🍳 Recipes</button>
+  <button class="tab" id="tabPlan">📅 Meal Plan</button>
+</div>
+
 <div class="toolbar">
   <input type="text" id="search" placeholder="Search recipes, notes, tags…">
   <button class="btn" id="favFilter" title="Show favourites only">♥ Favourites</button>
@@ -192,7 +238,30 @@
     <p><strong>No recipes yet.</strong></p>
     <p>Tap “+ Add Recipe” and paste an Instagram or Facebook link to get started.</p>
   </div>
+  <section id="planView" style="display:none">
+    <div class="week-nav">
+      <button class="btn small" id="prevWeek">‹ Prev</button>
+      <button class="btn small" id="todayWeek">Today</button>
+      <button class="btn small" id="nextWeek">Next ›</button>
+      <div id="weekLabel"></div>
+    </div>
+    <div class="week" id="week"></div>
+  </section>
 </main>
+
+<!-- Recipe picker for meal plan -->
+<div class="overlay" id="pickerOverlay">
+  <div class="modal">
+    <h2 id="pickerTitle">Add recipe</h2>
+    <div class="field" style="margin-bottom:0">
+      <input type="text" id="pickerSearch" placeholder="Search your recipes…">
+    </div>
+    <div class="picker-list" id="pickerList"></div>
+    <div class="modal-actions">
+      <button class="btn" id="pickerCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- Add/Edit modal -->
 <div class="overlay" id="modalOverlay">
@@ -277,7 +346,13 @@
   var META_KEY = 'recipeBox.savedAt';
   var VIEW_KEY = 'recipeBox.viewGist';
   var GIST_FILE = 'recipe-box.json';
+  var PLAN_KEY = 'recipeBox.plan.v1';
+  var SLOTS = [['breakfast', '🌅 Breakfast'], ['lunch', '☀️ Lunch'], ['dinner', '🌙 Dinner']];
   var recipes = [];
+  var plan = {};
+  var view = 'recipes';
+  var weekStart = null;
+  var pickTarget = null;
   var editingId = null;
   var pendingThumb = null;
   var activeTag = null;
@@ -290,10 +365,13 @@
   function load() {
     try { recipes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
     catch (e) { recipes = []; }
+    try { plan = JSON.parse(localStorage.getItem(PLAN_KEY) || '{}') || {}; }
+    catch (e) { plan = {}; }
   }
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+      localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
       localStorage.setItem(META_KEY, String(Date.now()));
     }
     catch (e) { toast('⚠ Storage full — export a backup and delete old entries.'); }
@@ -329,6 +407,15 @@
   function fmtDate(ts) {
     var d = new Date(ts);
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function byId(id) { return recipes.filter(function (x) { return x.id === id; })[0] || null; }
+  function mondayOf(d) {
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d;
+  }
+  function isoDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
   // downscale image to small base64 thumbnail
@@ -402,6 +489,7 @@
   }
 
   function render() {
+    if (view === 'plan') { renderPlan(); return; }
     var q = $('search').value.trim().toLowerCase();
     var pf = $('platformFilter').value;
     var sort = $('sortBy').value;
@@ -476,6 +564,110 @@
       };
       grid.appendChild(card);
     });
+  }
+
+  // ---------- meal plan ----------
+  function showView(v) {
+    view = v;
+    var rec = v === 'recipes';
+    $('tabRecipes').classList.toggle('active', rec);
+    $('tabPlan').classList.toggle('active', !rec);
+    document.querySelector('.toolbar').style.display = rec ? 'flex' : 'none';
+    $('tagbar').style.display = rec ? 'flex' : 'none';
+    $('grid').style.display = rec ? 'grid' : 'none';
+    $('planView').style.display = rec ? 'none' : 'block';
+    if (rec) { render(); } else { $('empty').style.display = 'none'; renderPlan(); }
+  }
+  function renderPlan() {
+    var todayIso = isoDate(new Date());
+    var end = new Date(weekStart); end.setDate(end.getDate() + 6);
+    var opts = { month: 'short', day: 'numeric' };
+    $('weekLabel').textContent =
+      weekStart.toLocaleDateString(undefined, opts) + ' – ' +
+      end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+    var wk = $('week');
+    wk.innerHTML = '';
+    for (var i = 0; i < 7; i++) {
+      (function (i) {
+        var d = new Date(weekStart); d.setDate(d.getDate() + i);
+        var dIso = isoDate(d);
+        var day = document.createElement('div');
+        day.className = 'day' + (dIso === todayIso ? ' today' : '');
+        var head = document.createElement('div');
+        head.className = 'day-head';
+        head.innerHTML = d.toLocaleDateString(undefined, { weekday: 'short' }) +
+          '<small>' + d.toLocaleDateString(undefined, opts) + '</small>';
+        day.appendChild(head);
+        SLOTS.forEach(function (slotDef) {
+          var slotKey = slotDef[0];
+          var slot = document.createElement('div');
+          slot.className = 'slot';
+          slot.innerHTML = '<div class="slot-label">' + slotDef[1] + '</div>';
+          var ids = (plan[dIso] && plan[dIso][slotKey]) || [];
+          ids.forEach(function (id) {
+            var r = byId(id);
+            if (!r) return;
+            var item = document.createElement('div');
+            item.className = 'plan-item';
+            item.innerHTML =
+              (r.thumb ? '<img src="' + esc(r.thumb) + '">' : '') +
+              '<span class="pi-title" title="Open video">' + esc(r.title) + '</span>' +
+              '<button class="plan-remove" title="Remove">✕</button>';
+            item.querySelector('.pi-title').onclick = function () { if (r.url) window.open(r.url, '_blank'); };
+            item.querySelector('.plan-remove').onclick = function () {
+              plan[dIso][slotKey] = plan[dIso][slotKey].filter(function (x) { return x !== id; });
+              save(); renderPlan();
+            };
+            slot.appendChild(item);
+          });
+          var addBtn = document.createElement('button');
+          addBtn.className = 'slot-add';
+          addBtn.textContent = '+ add';
+          addBtn.onclick = function () { openPicker(dIso, slotKey, slotDef[1], d); };
+          slot.appendChild(addBtn);
+          day.appendChild(slot);
+        });
+        wk.appendChild(day);
+      })(i);
+    }
+  }
+  function openPicker(dateIso, slotKey, slotLabel, dateObj) {
+    if (!recipes.length) { toast('Save some recipes first!'); return; }
+    pickTarget = { date: dateIso, slot: slotKey };
+    $('pickerTitle').textContent = slotLabel + ' · ' + dateObj.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    $('pickerSearch').value = '';
+    renderPickerList('');
+    $('pickerOverlay').classList.add('open');
+    setTimeout(function () { $('pickerSearch').focus(); }, 50);
+  }
+  function renderPickerList(q) {
+    q = (q || '').toLowerCase();
+    var listEl = $('pickerList');
+    listEl.innerHTML = '';
+    recipes.filter(function (r) {
+      if (!q) return true;
+      return (r.title + ' ' + (r.tags || []).join(' ')).toLowerCase().indexOf(q) > -1;
+    }).forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'picker-row';
+      row.innerHTML =
+        (r.thumb ? '<img src="' + esc(r.thumb) + '">' : '<span class="pr-emoji">' + platformEmoji(r.platform) + '</span>') +
+        '<span>' + esc(r.title) + (r.fav ? ' ❤️' : '') + '</span>';
+      row.onclick = function () {
+        if (!pickTarget) return;
+        if (!plan[pickTarget.date]) plan[pickTarget.date] = {};
+        if (!plan[pickTarget.date][pickTarget.slot]) plan[pickTarget.date][pickTarget.slot] = [];
+        plan[pickTarget.date][pickTarget.slot].push(r.id);
+        save();
+        $('pickerOverlay').classList.remove('open');
+        pickTarget = null;
+        renderPlan();
+        toast('Added to plan ✓');
+      };
+      listEl.appendChild(row);
+    });
+    if (!listEl.children.length) listEl.innerHTML = '<div class="hint" style="text-align:center;padding:14px">No recipes match.</div>';
   }
 
   // ---------- modal ----------
@@ -602,7 +794,7 @@
   function payload() {
     var savedAt = parseInt(localStorage.getItem(META_KEY) || '0', 10) || Date.now();
     var files = {};
-    files[GIST_FILE] = { content: JSON.stringify({ app: 'recipe-box', savedAt: savedAt, recipes: recipes }) };
+    files[GIST_FILE] = { content: JSON.stringify({ app: 'recipe-box', savedAt: savedAt, recipes: recipes, plan: plan }) };
     return files;
   }
   function connect() {
@@ -654,7 +846,9 @@
         var localSaved = parseInt(localStorage.getItem(META_KEY) || '0', 10);
         if (data && Array.isArray(data.recipes) && (data.savedAt || 0) > localSaved) {
           recipes = data.recipes;
+          plan = (data.plan && typeof data.plan === 'object') ? data.plan : {};
           localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+          localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
           localStorage.setItem(META_KEY, String(data.savedAt));
           render();
         }
@@ -707,8 +901,16 @@
   $('sToken').addEventListener('keydown', function (e) { if (e.key === 'Enter') connect(); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) pull(); });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeModal(); $('syncOverlay').classList.remove('open'); }
+    if (e.key === 'Escape') { closeModal(); $('syncOverlay').classList.remove('open'); $('pickerOverlay').classList.remove('open'); }
   });
+  $('tabRecipes').onclick = function () { showView('recipes'); };
+  $('tabPlan').onclick = function () { showView('plan'); };
+  $('prevWeek').onclick = function () { weekStart.setDate(weekStart.getDate() - 7); renderPlan(); };
+  $('nextWeek').onclick = function () { weekStart.setDate(weekStart.getDate() + 7); renderPlan(); };
+  $('todayWeek').onclick = function () { weekStart = mondayOf(new Date()); renderPlan(); };
+  $('pickerCancel').onclick = function () { $('pickerOverlay').classList.remove('open'); pickTarget = null; };
+  $('pickerOverlay').onclick = function (e) { if (e.target === this) { this.classList.remove('open'); pickTarget = null; } };
+  $('pickerSearch').oninput = function () { renderPickerList(this.value); };
   $('favFilter').onclick = function () {
     favOnly = !favOnly;
     this.classList.toggle('active', favOnly);
@@ -748,6 +950,7 @@
   // ---------- init ----------
   var qpGist = new URLSearchParams(location.search).get('gist');
   if (qpGist && /^[\w]+$/.test(qpGist)) localStorage.setItem(VIEW_KEY, qpGist);
+  weekStart = mondayOf(new Date());
   load();
   applyLock();
   render();
