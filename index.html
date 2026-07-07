@@ -144,7 +144,16 @@
   .tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .week-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .week-nav #weekLabel { font-weight: 700; font-size: 1.02rem; }
+  .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: 99px; overflow: hidden; margin-left: auto; }
+  .mode-toggle button { border: none; background: var(--card); padding: 7px 16px; font-size: .82rem; font-weight: 600; cursor: pointer; color: var(--muted); }
+  .mode-toggle button.active { background: var(--ink); color: #fff; }
   .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .week.single { grid-template-columns: 1fr; max-width: 520px; margin: 0 auto; }
+  .week.single .day { padding: 16px; }
+  .week.single .plan-item { font-size: .9rem; padding: 8px; }
+  .week.single .plan-item img { width: 40px; height: 40px; }
+  .week.single .slot-add { padding: 8px; font-size: .85rem; }
+  .week.single .day-head { font-size: 1rem; }
   .day {
     background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
     padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 180px;
@@ -244,6 +253,10 @@
       <button class="btn small" id="todayWeek">Today</button>
       <button class="btn small" id="nextWeek">Next ›</button>
       <div id="weekLabel"></div>
+      <div class="mode-toggle">
+        <button id="modeDay" class="active">Day</button>
+        <button id="modeWeek">Week</button>
+      </div>
     </div>
     <div class="week" id="week"></div>
   </section>
@@ -351,7 +364,8 @@
   var recipes = [];
   var plan = {};
   var view = 'recipes';
-  var weekStart = null;
+  var planMode = 'day';
+  var cursor = null;
   var pickTarget = null;
   var editingId = null;
   var pendingThumb = null;
@@ -580,15 +594,27 @@
   }
   function renderPlan() {
     var todayIso = isoDate(new Date());
-    var end = new Date(weekStart); end.setDate(end.getDate() + 6);
     var opts = { month: 'short', day: 'numeric' };
-    $('weekLabel').textContent =
-      weekStart.toLocaleDateString(undefined, opts) + ' – ' +
-      end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    var single = planMode === 'day';
+    var start = single ? new Date(cursor) : mondayOf(cursor);
+    var days = single ? 1 : 7;
+
+    if (single) {
+      $('weekLabel').textContent = start.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    } else {
+      var end = new Date(start); end.setDate(end.getDate() + 6);
+      $('weekLabel').textContent =
+        start.toLocaleDateString(undefined, opts) + ' – ' +
+        end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    $('modeDay').classList.toggle('active', single);
+    $('modeWeek').classList.toggle('active', !single);
 
     var wk = $('week');
+    wk.className = 'week' + (single ? ' single' : '');
     wk.innerHTML = '';
-    for (var i = 0; i < 7; i++) {
+    var weekStart = start;
+    for (var i = 0; i < days; i++) {
       (function (i) {
         var d = new Date(weekStart); d.setDate(d.getDate() + i);
         var dIso = isoDate(d);
@@ -905,9 +931,11 @@
   });
   $('tabRecipes').onclick = function () { showView('recipes'); };
   $('tabPlan').onclick = function () { showView('plan'); };
-  $('prevWeek').onclick = function () { weekStart.setDate(weekStart.getDate() - 7); renderPlan(); };
-  $('nextWeek').onclick = function () { weekStart.setDate(weekStart.getDate() + 7); renderPlan(); };
-  $('todayWeek').onclick = function () { weekStart = mondayOf(new Date()); renderPlan(); };
+  $('prevWeek').onclick = function () { cursor.setDate(cursor.getDate() - (planMode === 'day' ? 1 : 7)); renderPlan(); };
+  $('nextWeek').onclick = function () { cursor.setDate(cursor.getDate() + (planMode === 'day' ? 1 : 7)); renderPlan(); };
+  $('todayWeek').onclick = function () { cursor = new Date(); renderPlan(); };
+  $('modeDay').onclick = function () { planMode = 'day'; renderPlan(); };
+  $('modeWeek').onclick = function () { planMode = 'week'; renderPlan(); };
   $('pickerCancel').onclick = function () { $('pickerOverlay').classList.remove('open'); pickTarget = null; };
   $('pickerOverlay').onclick = function (e) { if (e.target === this) { this.classList.remove('open'); pickTarget = null; } };
   $('pickerSearch').oninput = function () { renderPickerList(this.value); };
@@ -950,7 +978,7 @@
   // ---------- init ----------
   var qpGist = new URLSearchParams(location.search).get('gist');
   if (qpGist && /^[\w]+$/.test(qpGist)) localStorage.setItem(VIEW_KEY, qpGist);
-  weekStart = mondayOf(new Date());
+  cursor = new Date();
   load();
   applyLock();
   render();
