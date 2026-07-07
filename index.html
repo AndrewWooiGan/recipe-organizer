@@ -145,6 +145,24 @@
   .week-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .week-nav #weekLabel { font-weight: 700; font-size: 1.02rem; }
   .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: 99px; overflow: hidden; margin-left: auto; }
+  .plan-switch { margin-left: 0; margin-right: 4px; }
+  .plan-switch button.active { background: var(--accent); }
+  .confirm-card { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  .confirm-card img, .confirm-card .cc-emoji { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex: none; }
+  .confirm-card .cc-emoji { background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; }
+  .confirm-card .cc-title { font-weight: 700; }
+  .quick-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .quick-row .who { font-size: .8rem; font-weight: 700; min-width: 66px; }
+  .quick-slot {
+    border: 1px solid var(--border); background: var(--bg); border-radius: 99px;
+    padding: 5px 11px; font-size: .78rem; font-weight: 600; cursor: pointer;
+  }
+  .quick-slot:hover { border-color: var(--accent); color: var(--accent); }
+  .quick-slot:disabled { background: #e6f5ec; color: #2e9e5b; border-color: #bfe5cd; cursor: default; }
+  .sum-day { margin-bottom: 12px; }
+  .sum-day h3 { font-size: .9rem; margin-bottom: 4px; }
+  .sum-line { font-size: .85rem; line-height: 1.5; color: var(--ink); }
+  .sum-line b { color: var(--muted); font-weight: 600; }
   .mode-toggle button { border: none; background: var(--card); padding: 7px 16px; font-size: .82rem; font-weight: 600; cursor: pointer; color: var(--muted); }
   .mode-toggle button.active { background: var(--ink); color: #fff; }
   .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
@@ -249,6 +267,10 @@
   </div>
   <section id="planView" style="display:none">
     <div class="week-nav">
+      <div class="mode-toggle plan-switch">
+        <button id="planFamily" class="active">👪 Family</button>
+        <button id="planBaby">👶 Baby</button>
+      </div>
       <button class="btn small" id="prevWeek">‹ Prev</button>
       <button class="btn small" id="todayWeek">Today</button>
       <button class="btn small" id="nextWeek">Next ›</button>
@@ -257,6 +279,7 @@
         <button id="modeDay" class="active">Day</button>
         <button id="modeWeek">Week</button>
       </div>
+      <button class="btn small" id="summaryBtn">📋 Summary</button>
     </div>
     <div class="week" id="week"></div>
   </section>
@@ -348,6 +371,32 @@
   </div>
 </div>
 
+<!-- Recipe saved confirmation -->
+<div class="overlay" id="confirmOverlay">
+  <div class="modal">
+    <h2>✓ Recipe saved</h2>
+    <div id="confirmCard"></div>
+    <div class="field">
+      <label>Add to today's plan</label>
+      <div id="confirmActions"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary" id="confirmDone">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Week summary -->
+<div class="overlay" id="summaryOverlay">
+  <div class="modal">
+    <h2 id="summaryTitle"></h2>
+    <div id="summaryBody"></div>
+    <div class="modal-actions">
+      <button class="btn" id="summaryClose">Close</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="importFile" accept=".json" style="display:none">
 <div class="toast" id="toast"></div>
 
@@ -360,9 +409,13 @@
   var VIEW_KEY = 'recipeBox.viewGist';
   var GIST_FILE = 'recipe-box.json';
   var PLAN_KEY = 'recipeBox.plan.v1';
-  var SLOTS = [['breakfast', '🌅 Breakfast'], ['lunch', '☀️ Lunch'], ['dinner', '🌙 Dinner']];
+  var PLANS_KEY = 'recipeBox.plans.v1';
+  var SLOTS_FAMILY = [['breakfast', '🌅 Breakfast'], ['lunch', '☀️ Lunch'], ['dinner', '🌙 Dinner']];
+  var SLOTS_BABY = [['breakfast', '🌅 Breakfast'], ['snack_am', '🍎 Morning Snack'], ['lunch', '☀️ Lunch'], ['snack_pm', '🍪 Afternoon Snack'], ['dinner', '🌙 Dinner']];
+  function slotsFor(p) { return p === 'baby' ? SLOTS_BABY : SLOTS_FAMILY; }
   var recipes = [];
-  var plan = {};
+  var plans = { family: {}, baby: {} };
+  var activePlan = 'family';
   var view = 'recipes';
   var planMode = 'day';
   var cursor = null;
@@ -379,13 +432,20 @@
   function load() {
     try { recipes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
     catch (e) { recipes = []; }
-    try { plan = JSON.parse(localStorage.getItem(PLAN_KEY) || '{}') || {}; }
-    catch (e) { plan = {}; }
+    try {
+      var p = JSON.parse(localStorage.getItem(PLANS_KEY) || 'null');
+      if (!p) {
+        // migrate old single-plan data
+        var legacy = JSON.parse(localStorage.getItem(PLAN_KEY) || '{}') || {};
+        p = { family: legacy, baby: {} };
+      }
+      plans = { family: p.family || {}, baby: p.baby || {} };
+    } catch (e) { plans = { family: {}, baby: {} }; }
   }
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
-      localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
+      localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
       localStorage.setItem(META_KEY, String(Date.now()));
     }
     catch (e) { toast('⚠ Storage full — export a backup and delete old entries.'); }
@@ -609,6 +669,9 @@
     }
     $('modeDay').classList.toggle('active', single);
     $('modeWeek').classList.toggle('active', !single);
+    $('planFamily').classList.toggle('active', activePlan === 'family');
+    $('planBaby').classList.toggle('active', activePlan === 'baby');
+    var plan = plans[activePlan];
 
     var wk = $('week');
     wk.className = 'week' + (single ? ' single' : '');
@@ -625,7 +688,7 @@
         head.innerHTML = d.toLocaleDateString(undefined, { weekday: 'short' }) +
           '<small>' + d.toLocaleDateString(undefined, opts) + '</small>';
         day.appendChild(head);
-        SLOTS.forEach(function (slotDef) {
+        slotsFor(activePlan).forEach(function (slotDef) {
           var slotKey = slotDef[0];
           var slot = document.createElement('div');
           slot.className = 'slot';
@@ -642,7 +705,8 @@
               '<button class="plan-remove" title="Remove">✕</button>';
             item.querySelector('.pi-title').onclick = function () { if (r.url) window.open(r.url, '_blank'); };
             item.querySelector('.plan-remove').onclick = function () {
-              plan[dIso][slotKey] = plan[dIso][slotKey].filter(function (x) { return x !== id; });
+              var p = plans[activePlan];
+              p[dIso][slotKey] = p[dIso][slotKey].filter(function (x) { return x !== id; });
               save(); renderPlan();
             };
             slot.appendChild(item);
@@ -682,6 +746,7 @@
         '<span>' + esc(r.title) + (r.fav ? ' ❤️' : '') + '</span>';
       row.onclick = function () {
         if (!pickTarget) return;
+        var plan = plans[activePlan];
         if (!plan[pickTarget.date]) plan[pickTarget.date] = {};
         if (!plan[pickTarget.date][pickTarget.slot]) plan[pickTarget.date][pickTarget.slot] = [];
         plan[pickTarget.date][pickTarget.slot].push(r.id);
@@ -694,6 +759,68 @@
       listEl.appendChild(row);
     });
     if (!listEl.children.length) listEl.innerHTML = '<div class="hint" style="text-align:center;padding:14px">No recipes match.</div>';
+  }
+
+  // ---------- confirmation card & week summary ----------
+  function openConfirm(r) {
+    $('confirmCard').innerHTML =
+      '<div class="confirm-card">' +
+        (r.thumb ? '<img src="' + esc(r.thumb) + '">' : '<div class="cc-emoji">' + platformEmoji(r.platform) + '</div>') +
+        '<div><div class="cc-title">' + esc(r.title) + '</div>' +
+        ((r.tags && r.tags.length) ? '<div class="card-tags" style="margin-top:4px">' + r.tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+        '</div></div>';
+    var wrap = $('confirmActions');
+    wrap.innerHTML = '';
+    [['family', '👪 Family'], ['baby', '👶 Baby']].forEach(function (g) {
+      var row = document.createElement('div');
+      row.className = 'quick-row';
+      row.innerHTML = '<span class="who">' + g[1] + '</span>';
+      slotsFor(g[0]).forEach(function (slotDef) {
+        var b = document.createElement('button');
+        b.className = 'quick-slot';
+        b.textContent = slotDef[1];
+        b.onclick = function () {
+          var todayIso = isoDate(new Date());
+          var p = plans[g[0]];
+          if (!p[todayIso]) p[todayIso] = {};
+          if (!p[todayIso][slotDef[0]]) p[todayIso][slotDef[0]] = [];
+          p[todayIso][slotDef[0]].push(r.id);
+          save();
+          b.textContent = '✓ ' + slotDef[1];
+          b.disabled = true;
+          toast('Added to ' + g[1] + ' · ' + slotDef[1] + ' today');
+        };
+        row.appendChild(b);
+      });
+      wrap.appendChild(row);
+    });
+    $('confirmOverlay').classList.add('open');
+  }
+  function openSummary() {
+    var start = mondayOf(cursor);
+    var end = new Date(start); end.setDate(end.getDate() + 6);
+    var plan = plans[activePlan];
+    $('summaryTitle').textContent =
+      (activePlan === 'baby' ? '👶 Baby' : '👪 Family') + ' · ' +
+      start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' – ' +
+      end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    var html = '';
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(start); d.setDate(d.getDate() + i);
+      var dIso = isoDate(d);
+      var lines = '';
+      slotsFor(activePlan).forEach(function (slotDef) {
+        var names = ((plan[dIso] && plan[dIso][slotDef[0]]) || [])
+          .map(function (id) { var r = byId(id); return r ? esc(r.title) : null; })
+          .filter(Boolean);
+        if (names.length) lines += '<div class="sum-line"><b>' + slotDef[1] + ':</b> ' + names.join(', ') + '</div>';
+      });
+      if (lines) {
+        html += '<div class="sum-day"><h3>' + d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }) + '</h3>' + lines + '</div>';
+      }
+    }
+    $('summaryBody').innerHTML = html || '<p class="hint" style="text-align:center;padding:14px">Nothing planned this week yet.</p>';
+    $('summaryOverlay').classList.add('open');
   }
 
   // ---------- modal ----------
@@ -737,13 +864,14 @@
       var r = recipes.filter(function (x) { return x.id === editingId; })[0];
       if (r) { Object.keys(data).forEach(function (k) { r[k] = data[k]; }); }
       toast('Recipe updated ✓');
-    } else {
-      data.id = uid();
-      data.added = Date.now();
-      recipes.unshift(data);
-      toast('Recipe saved ✓');
+      save(); render(); closeModal();
+      return;
     }
+    data.id = uid();
+    data.added = Date.now();
+    recipes.unshift(data);
     save(); render(); closeModal();
+    openConfirm(data);
   }
 
   function deleteRecipe() {
@@ -820,7 +948,7 @@
   function payload() {
     var savedAt = parseInt(localStorage.getItem(META_KEY) || '0', 10) || Date.now();
     var files = {};
-    files[GIST_FILE] = { content: JSON.stringify({ app: 'recipe-box', savedAt: savedAt, recipes: recipes, plan: plan }) };
+    files[GIST_FILE] = { content: JSON.stringify({ app: 'recipe-box', savedAt: savedAt, recipes: recipes, plans: plans }) };
     return files;
   }
   function connect() {
@@ -872,9 +1000,13 @@
         var localSaved = parseInt(localStorage.getItem(META_KEY) || '0', 10);
         if (data && Array.isArray(data.recipes) && (data.savedAt || 0) > localSaved) {
           recipes = data.recipes;
-          plan = (data.plan && typeof data.plan === 'object') ? data.plan : {};
+          if (data.plans && typeof data.plans === 'object') {
+            plans = { family: data.plans.family || {}, baby: data.plans.baby || {} };
+          } else if (data.plan && typeof data.plan === 'object') {
+            plans = { family: data.plan, baby: {} };
+          }
           localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
-          localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
+          localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
           localStorage.setItem(META_KEY, String(data.savedAt));
           render();
         }
@@ -927,7 +1059,12 @@
   $('sToken').addEventListener('keydown', function (e) { if (e.key === 'Enter') connect(); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) pull(); });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeModal(); $('syncOverlay').classList.remove('open'); $('pickerOverlay').classList.remove('open'); }
+    if (e.key === 'Escape') {
+      closeModal();
+      ['syncOverlay', 'pickerOverlay', 'summaryOverlay', 'confirmOverlay'].forEach(function (id) {
+        $(id).classList.remove('open');
+      });
+    }
   });
   $('tabRecipes').onclick = function () { showView('recipes'); };
   $('tabPlan').onclick = function () { showView('plan'); };
@@ -936,9 +1073,16 @@
   $('todayWeek').onclick = function () { cursor = new Date(); renderPlan(); };
   $('modeDay').onclick = function () { planMode = 'day'; renderPlan(); };
   $('modeWeek').onclick = function () { planMode = 'week'; renderPlan(); };
+  $('planFamily').onclick = function () { activePlan = 'family'; renderPlan(); };
+  $('planBaby').onclick = function () { activePlan = 'baby'; renderPlan(); };
   $('pickerCancel').onclick = function () { $('pickerOverlay').classList.remove('open'); pickTarget = null; };
   $('pickerOverlay').onclick = function (e) { if (e.target === this) { this.classList.remove('open'); pickTarget = null; } };
   $('pickerSearch').oninput = function () { renderPickerList(this.value); };
+  $('summaryBtn').onclick = openSummary;
+  $('summaryClose').onclick = function () { $('summaryOverlay').classList.remove('open'); };
+  $('summaryOverlay').onclick = function (e) { if (e.target === this) this.classList.remove('open'); };
+  $('confirmDone').onclick = function () { $('confirmOverlay').classList.remove('open'); };
+  $('confirmOverlay').onclick = function (e) { if (e.target === this) this.classList.remove('open'); };
   $('favFilter').onclick = function () {
     favOnly = !favOnly;
     this.classList.toggle('active', favOnly);
