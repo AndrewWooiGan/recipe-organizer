@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Recipe Box</title>
+<style>
+  :root {
+    --bg: #faf6f1;
+    --card: #ffffff;
+    --ink: #2d2a26;
+    --muted: #8a8378;
+    --accent: #e05d38;
+    --accent-soft: #fdeee8;
+    --border: #e8e1d8;
+    --shadow: 0 2px 8px rgba(45,42,38,.08);
+    --shadow-lg: 0 8px 30px rgba(45,42,38,.16);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+    min-height: 100vh;
+  }
+  header {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 16px 20px; position: sticky; top: 0; z-index: 10;
+  }
+  .header-inner { max-width: 1100px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  h1 { font-size: 1.35rem; display: flex; align-items: center; gap: 8px; margin-right: auto; }
+  h1 .count { font-size: .8rem; font-weight: 500; color: var(--muted); background: var(--accent-soft); padding: 2px 10px; border-radius: 99px; }
+  .btn {
+    border: none; border-radius: 10px; padding: 10px 16px; font-size: .9rem; font-weight: 600;
+    cursor: pointer; transition: transform .1s, box-shadow .15s; background: #efe9e1; color: var(--ink);
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.small { padding: 6px 12px; font-size: .8rem; }
+  .btn.danger { background: #fbe4e1; color: #b3391f; }
+  .toolbar { max-width: 1100px; margin: 18px auto 0; padding: 0 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  #search {
+    flex: 1; min-width: 220px; padding: 11px 16px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: .95rem; background: var(--card); outline: none;
+  }
+  #search:focus { border-color: var(--accent); }
+  select {
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+    font-size: .9rem; color: var(--ink); outline: none;
+  }
+  .tagbar { max-width: 1100px; margin: 12px auto 0; padding: 0 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag-chip {
+    background: var(--card); border: 1px solid var(--border); border-radius: 99px;
+    padding: 5px 14px; font-size: .82rem; cursor: pointer; color: var(--muted);
+  }
+  .tag-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  main { max-width: 1100px; margin: 20px auto 60px; padding: 0 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--card); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; transition: transform .12s, box-shadow .15s; position: relative;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+  .thumb {
+    height: 160px; background: linear-gradient(135deg, #f3ece3, #e9dfd2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 2.6rem; position: relative;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .platform {
+    position: absolute; top: 10px; left: 10px; font-size: .7rem; font-weight: 700; letter-spacing: .3px;
+    padding: 3px 9px; border-radius: 99px; color: #fff; text-transform: uppercase;
+  }
+  .platform.instagram { background: linear-gradient(45deg, #f09433, #dc2743, #bc1888); }
+  .platform.facebook { background: #1877f2; }
+  .platform.tiktok { background: #111; }
+  .platform.youtube { background: #f00; }
+  .platform.other { background: #8a8378; }
+  .tried-badge {
+    position: absolute; top: 10px; right: 10px; background: #2e9e5b; color: #fff;
+    font-size: .7rem; font-weight: 700; padding: 3px 9px; border-radius: 99px;
+  }
+  .fav-btn {
+    position: absolute; bottom: 10px; right: 10px; background: rgba(255,255,255,.92);
+    border: none; border-radius: 99px; width: 34px; height: 34px; font-size: 1.05rem;
+    cursor: pointer; box-shadow: var(--shadow); line-height: 1;
+  }
+  .fav-btn:hover { transform: scale(1.12); }
+  #favFilter.active { background: #e0364b; color: #fff; }
+  .card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .card-title { font-size: 1rem; font-weight: 700; line-height: 1.3; }
+  .card-notes { font-size: .83rem; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .card-tags span { background: var(--accent-soft); color: var(--accent); font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 99px; }
+  .card-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 10px; }
+  .card-actions .btn { flex: 1; }
+  .card-date { font-size: .72rem; color: var(--muted); }
+  .empty { text-align: center; padding: 80px 20px; color: var(--muted); }
+  .empty .big { font-size: 3.5rem; margin-bottom: 14px; }
+
+  /* Modal */
+  .overlay {
+    display: none; position: fixed; inset: 0; background: rgba(45,42,38,.5); z-index: 50;
+    align-items: flex-start; justify-content: center; padding: 30px 16px; overflow-y: auto;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 18px; width: 100%; max-width: 520px;
+    padding: 26px; box-shadow: var(--shadow-lg);
+  }
+  .modal h2 { font-size: 1.15rem; margin-bottom: 18px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: .8rem; font-weight: 700; margin-bottom: 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .field input[type=text], .field input[type=url], .field textarea {
+    width: 100%; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: .93rem; font-family: inherit; outline: none; background: var(--bg);
+  }
+  .field input:focus, .field textarea:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 70px; }
+  .hint { font-size: .75rem; color: var(--muted); margin-top: 5px; line-height: 1.4; }
+  .link-row { display: flex; gap: 8px; }
+  .link-row input { flex: 1; }
+  #fetchStatus { font-size: .78rem; margin-top: 6px; }
+  #fetchStatus.ok { color: #2e9e5b; }
+  #fetchStatus.err { color: #b3391f; }
+  .thumb-preview {
+    width: 100%; height: 150px; border: 2px dashed var(--border); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; color: var(--muted);
+    font-size: .82rem; cursor: pointer; overflow: hidden; text-align: center; padding: 8px; background: var(--bg);
+  }
+  .thumb-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 11px 22px; border-radius: 99px;
+    font-size: .88rem; box-shadow: var(--shadow-lg); z-index: 99; opacity: 0; transition: opacity .25s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .sync-dot { width: 9px; height: 9px; border-radius: 99px; display: inline-block; background: #c9c1b5; }
+  .sync-dot.ok { background: #2e9e5b; }
+  .sync-dot.sync { background: #e8a13c; animation: pulse 1s infinite; }
+  .sync-dot.err { background: #d64533; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  #syncMsg { font-size: .8rem; margin-top: 10px; }
+  #syncMsg.err { color: #b3391f; }
+  #syncMsg.ok { color: #2e9e5b; }
+  body.locked .fav-btn, body.locked [data-act=edit] { display: none; }
+  .modal p.intro { font-size: .85rem; color: var(--muted); line-height: 1.5; margin-bottom: 16px; }
+  .modal a { color: var(--accent); }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .thumb { height: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <h1>🍳 My Recipe Box <span class="count" id="count">0</span></h1>
+    <span class="sync-dot" id="syncDot" title="Sync status"></span>
+    <button class="btn" id="syncBtn">🔒 Unlock</button>
+    <button class="btn" id="exportBtn">⬇ Export</button>
+    <button class="btn" id="importBtn">⬆ Import</button>
+    <button class="btn primary" id="addBtn">+ Add Recipe</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <input type="text" id="search" placeholder="Search recipes, notes, tags…">
+  <button class="btn" id="favFilter" title="Show favourites only">♥ Favourites</button>
+  <select id="platformFilter">
+    <option value="">All platforms</option>
+    <option value="instagram">Instagram</option>
+    <option value="facebook">Facebook</option>
+    <option value="tiktok">TikTok</option>
+    <option value="youtube">YouTube</option>
+    <option value="other">Other</option>
+  </select>
+  <select id="sortBy">
+    <option value="newest">Newest first</option>
+    <option value="oldest">Oldest first</option>
+    <option value="az">A → Z</option>
+  </select>
+</div>
+<div class="tagbar" id="tagbar"></div>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none">
+    <div class="big">🥘</div>
+    <p><strong>No recipes yet.</strong></p>
+    <p>Tap “+ Add Recipe” and paste an Instagram or Facebook link to get started.</p>
+  </div>
+</main>
+
+<!-- Add/Edit modal -->
+<div class="overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">Add Recipe</h2>
+    <div class="field">
+      <label>Video link</label>
+      <div class="link-row">
+        <input type="url" id="fUrl" placeholder="https://www.instagram.com/reel/…">
+        <button class="btn small" id="fetchBtn" type="button">Auto-fetch</button>
+      </div>
+      <div id="fetchStatus"></div>
+    </div>
+    <div class="field">
+      <label>Title *</label>
+      <input type="text" id="fTitle" placeholder="e.g. Garlic Butter Chicken">
+    </div>
+    <div class="field">
+      <label>Thumbnail</label>
+      <div class="thumb-preview" id="thumbPreview" title="Click to upload, or paste an image (Ctrl/Cmd+V)">
+        Click to upload a photo, or paste a screenshot here (Ctrl/Cmd+V)
+      </div>
+      <input type="file" id="fImage" accept="image/*" style="display:none">
+      <div class="hint">Tip: screenshot the video, then click here and press Ctrl/Cmd+V.</div>
+    </div>
+    <div class="field">
+      <label>Tags</label>
+      <input type="text" id="fTags" placeholder="chicken, dinner, quick (comma separated)">
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <textarea id="fNotes" placeholder="Ingredients, tweaks, how it turned out…"></textarea>
+    </div>
+    <div class="field check-row">
+      <input type="checkbox" id="fTried"> <label for="fTried" style="margin:0;text-transform:none;font-size:.9rem;color:var(--ink)">I've tried this recipe ✔</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn danger" id="deleteBtn" style="display:none;margin-right:auto">Delete</button>
+      <button class="btn" id="cancelBtn">Cancel</button>
+      <button class="btn primary" id="saveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sync / unlock modal -->
+<div class="overlay" id="syncOverlay">
+  <div class="modal">
+    <h2>🔐 Sync &amp; Unlock</h2>
+    <p class="intro">Connect your GitHub account to unlock editing and sync recipes across your devices. Your data is stored in a <strong>private Gist</strong> only your token can read or change.</p>
+    <div class="field">
+      <label>GitHub token</label>
+      <input type="password" id="sToken" placeholder="ghp_…" autocomplete="off">
+      <div class="hint">Create a classic token with only the <strong>gist</strong> scope:
+        <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Recipe+Box" target="_blank" rel="noopener">github.com/settings/tokens</a>.
+        The app finds your existing recipe Gist or creates one automatically.</div>
+    </div>
+    <div class="field" id="shareRow" style="display:none">
+      <label>Share with family (view-only link)</label>
+      <div class="link-row">
+        <input type="text" id="shareUrl" readonly>
+        <button class="btn small" id="copyShareBtn" type="button">Copy</button>
+      </div>
+      <div class="hint">Anyone with this link can browse and watch the recipes. To edit, they tap Unlock and enter the token — no other setup needed.</div>
+    </div>
+    <div id="syncMsg"></div>
+    <div class="modal-actions">
+      <button class="btn danger" id="disconnectBtn" style="display:none;margin-right:auto">Disconnect</button>
+      <button class="btn" id="syncCancelBtn">Cancel</button>
+      <button class="btn primary" id="connectBtn">Connect</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept=".json" style="display:none">
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var STORAGE_KEY = 'recipeBox.v1';
+  var SYNC_KEY = 'recipeBox.sync';
+  var META_KEY = 'recipeBox.savedAt';
+  var VIEW_KEY = 'recipeBox.viewGist';
+  var GIST_FILE = 'recipe-box.json';
+  var recipes = [];
+  var editingId = null;
+  var pendingThumb = null;
+  var activeTag = null;
+  var favOnly = false;
+  var syncCfg = null;
+  var pushTimer = null;
+  try { syncCfg = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); } catch (e) {}
+
+  // ---------- storage ----------
+  function load() {
+    try { recipes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+    catch (e) { recipes = []; }
+  }
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+      localStorage.setItem(META_KEY, String(Date.now()));
+    }
+    catch (e) { toast('⚠ Storage full — export a backup and delete old entries.'); }
+    schedulePush();
+  }
+
+  // ---------- helpers ----------
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function detectPlatform(url) {
+    url = (url || '').toLowerCase();
+    if (url.indexOf('instagram.com') > -1) return 'instagram';
+    if (url.indexOf('facebook.com') > -1 || url.indexOf('fb.watch') > -1 || url.indexOf('fb.com') > -1) return 'facebook';
+    if (url.indexOf('tiktok.com') > -1) return 'tiktok';
+    if (url.indexOf('youtube.com') > -1 || url.indexOf('youtu.be') > -1) return 'youtube';
+    return 'other';
+  }
+  function platformEmoji(p) {
+    return { instagram: '📸', facebook: '👍', tiktok: '🎵', youtube: '▶️', other: '🔗' }[p] || '🔗';
+  }
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._h);
+    t._h = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+  function fmtDate(ts) {
+    var d = new Date(ts);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  // downscale image to small base64 thumbnail
+  function shrinkImage(fileOrBlob, cb) {
+    var img = new Image();
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      img.onload = function () {
+        var W = 480;
+        var scale = Math.min(1, W / img.width);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        cb(canvas.toDataURL('image/jpeg', 0.65));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(fileOrBlob);
+  }
+
+  // ---------- auto-fetch (best effort) ----------
+  function autoFetch() {
+    var url = $('fUrl').value.trim();
+    var st = $('fetchStatus');
+    if (!url) { st.className = 'err'; st.textContent = 'Paste a link first.'; return; }
+    var p = detectPlatform(url);
+    st.className = ''; st.textContent = 'Fetching…';
+
+    // YouTube: thumbnail directly from URL, no API needed
+    if (p === 'youtube') {
+      var m = url.match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{6,})/);
+      if (m) {
+        $('thumbPreview').innerHTML = '<img src="https://img.youtube.com/vi/' + m[1] + '/hqdefault.jpg">';
+        pendingThumb = 'https://img.youtube.com/vi/' + m[1] + '/hqdefault.jpg';
+      }
+    }
+
+    // noembed.com: free oEmbed aggregator with CORS — works for TikTok/YouTube, sometimes others
+    fetch('https://noembed.com/embed?url=' + encodeURIComponent(url))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var got = false;
+        if (d.title && !$('fTitle').value) { $('fTitle').value = d.title; got = true; }
+        if (d.thumbnail_url) {
+          pendingThumb = d.thumbnail_url;
+          $('thumbPreview').innerHTML = '<img src="' + esc(d.thumbnail_url) + '">';
+          got = true;
+        }
+        if (got) { st.className = 'ok'; st.textContent = '✓ Details fetched — edit as needed.'; }
+        else {
+          st.className = 'err';
+          st.textContent = (p === 'instagram' || p === 'facebook')
+            ? 'Instagram/Facebook block auto-fetch — add a title and paste a screenshot instead.'
+            : 'Couldn’t fetch details — fill them in manually.';
+        }
+      })
+      .catch(function () {
+        st.className = 'err';
+        st.textContent = (p === 'instagram' || p === 'facebook')
+          ? 'Instagram/Facebook block auto-fetch — add a title and paste a screenshot instead.'
+          : 'Couldn’t fetch details — fill them in manually.';
+      });
+  }
+
+  // ---------- render ----------
+  function allTags() {
+    var set = {};
+    recipes.forEach(function (r) { (r.tags || []).forEach(function (t) { set[t] = (set[t] || 0) + 1; }); });
+    return Object.keys(set).sort(function (a, b) { return set[b] - set[a]; });
+  }
+
+  function render() {
+    var q = $('search').value.trim().toLowerCase();
+    var pf = $('platformFilter').value;
+    var sort = $('sortBy').value;
+
+    var list = recipes.filter(function (r) {
+      if (favOnly && !r.fav) return false;
+      if (pf && r.platform !== pf) return false;
+      if (activeTag && (r.tags || []).indexOf(activeTag) === -1) return false;
+      if (q) {
+        var hay = (r.title + ' ' + (r.notes || '') + ' ' + (r.tags || []).join(' ')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+
+    list.sort(function (a, b) {
+      if (sort === 'oldest') return a.added - b.added;
+      if (sort === 'az') return a.title.localeCompare(b.title);
+      return b.added - a.added;
+    });
+
+    $('count').textContent = recipes.length;
+    $('empty').style.display = recipes.length === 0 ? 'block' : 'none';
+
+    // tag bar
+    var tb = $('tagbar');
+    tb.innerHTML = '';
+    allTags().forEach(function (t) {
+      var chip = document.createElement('button');
+      chip.className = 'tag-chip' + (t === activeTag ? ' active' : '');
+      chip.textContent = t;
+      chip.onclick = function () { activeTag = (activeTag === t) ? null : t; render(); };
+      tb.appendChild(chip);
+    });
+
+    // cards
+    var grid = $('grid');
+    grid.innerHTML = '';
+    if (recipes.length && !list.length) {
+      grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">🔍</div><p>No matches — try a different search or filter.</p></div>';
+    }
+    list.forEach(function (r) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var thumbInner = r.thumb
+        ? '<img src="' + esc(r.thumb) + '" loading="lazy">'
+        : platformEmoji(r.platform);
+      card.innerHTML =
+        '<div class="thumb" title="Open video">' + thumbInner +
+          '<span class="platform ' + r.platform + '">' + r.platform + '</span>' +
+          (r.tried ? '<span class="tried-badge">✔ Tried</span>' : '') +
+          '<button class="fav-btn" data-act="fav" title="Toggle favourite">' + (r.fav ? '❤️' : '🤍') + '</button>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="card-title">' + esc(r.title) + '</div>' +
+          (r.tags && r.tags.length ? '<div class="card-tags">' + r.tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+          (r.notes ? '<div class="card-notes">' + esc(r.notes) + '</div>' : '') +
+          '<div class="card-date">Saved ' + fmtDate(r.added) + '</div>' +
+          '<div class="card-actions">' +
+            '<button class="btn small primary" data-act="open">▶ Watch</button>' +
+            '<button class="btn small" data-act="edit">Edit</button>' +
+          '</div>' +
+        '</div>';
+      card.querySelector('.thumb').onclick = function () { if (r.url) window.open(r.url, '_blank'); };
+      card.querySelector('[data-act=open]').onclick = function () { if (r.url) window.open(r.url, '_blank'); else toast('No link saved for this recipe.'); };
+      card.querySelector('[data-act=edit]').onclick = function () { openModal(r.id); };
+      card.querySelector('[data-act=fav]').onclick = function (e) {
+        e.stopPropagation();
+        r.fav = !r.fav;
+        save(); render();
+        toast(r.fav ? 'Added to favourites ❤️' : 'Removed from favourites');
+      };
+      grid.appendChild(card);
+    });
+  }
+
+  // ---------- modal ----------
+  function openModal(id) {
+    editingId = id || null;
+    pendingThumb = null;
+    var r = id ? recipes.filter(function (x) { return x.id === id; })[0] : null;
+    $('modalTitle').textContent = r ? 'Edit Recipe' : 'Add Recipe';
+    $('fUrl').value = r ? r.url : '';
+    $('fTitle').value = r ? r.title : '';
+    $('fTags').value = r ? (r.tags || []).join(', ') : '';
+    $('fNotes').value = r ? (r.notes || '') : '';
+    $('fTried').checked = r ? !!r.tried : false;
+    $('fetchStatus').textContent = '';
+    $('fetchStatus').className = '';
+    if (r && r.thumb) {
+      pendingThumb = r.thumb;
+      $('thumbPreview').innerHTML = '<img src="' + esc(r.thumb) + '">';
+    } else {
+      $('thumbPreview').innerHTML = 'Click to upload a photo, or paste a screenshot here (Ctrl/Cmd+V)';
+    }
+    $('deleteBtn').style.display = r ? 'inline-block' : 'none';
+    $('modalOverlay').classList.add('open');
+    setTimeout(function () { (r ? $('fTitle') : $('fUrl')).focus(); }, 50);
+  }
+  function closeModal() { $('modalOverlay').classList.remove('open'); editingId = null; pendingThumb = null; }
+
+  function saveRecipe() {
+    var title = $('fTitle').value.trim();
+    var url = $('fUrl').value.trim();
+    if (!title) { toast('Please add a title.'); $('fTitle').focus(); return; }
+    var tags = $('fTags').value.split(',').map(function (t) { return t.trim().toLowerCase(); }).filter(Boolean);
+    var data = {
+      url: url, title: title, tags: tags,
+      notes: $('fNotes').value.trim(),
+      tried: $('fTried').checked,
+      platform: detectPlatform(url),
+      thumb: pendingThumb || null
+    };
+    if (editingId) {
+      var r = recipes.filter(function (x) { return x.id === editingId; })[0];
+      if (r) { Object.keys(data).forEach(function (k) { r[k] = data[k]; }); }
+      toast('Recipe updated ✓');
+    } else {
+      data.id = uid();
+      data.added = Date.now();
+      recipes.unshift(data);
+      toast('Recipe saved ✓');
+    }
+    save(); render(); closeModal();
+  }
+
+  function deleteRecipe() {
+    if (!editingId) return;
+    if (!confirm('Delete this recipe? This can’t be undone.')) return;
+    recipes = recipes.filter(function (x) { return x.id !== editingId; });
+    save(); render(); closeModal();
+    toast('Recipe deleted');
+  }
+
+  // ---------- export / import ----------
+  function doExport() {
+    var blob = new Blob([JSON.stringify(recipes, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'recipe-box-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Backup downloaded ✓');
+  }
+  function doImport(file) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var data = JSON.parse(e.target.result);
+        if (!Array.isArray(data)) throw new Error('bad');
+        var existing = {};
+        recipes.forEach(function (r) { existing[r.id] = true; });
+        var added = 0;
+        data.forEach(function (r) {
+          if (r && r.title && !existing[r.id]) {
+            if (!r.id) r.id = uid();
+            if (!r.added) r.added = Date.now();
+            if (!r.platform) r.platform = detectPlatform(r.url);
+            recipes.push(r); added++;
+          }
+        });
+        save(); render();
+        toast('Imported ' + added + ' recipe' + (added === 1 ? '' : 's') + ' ✓');
+      } catch (err) { toast('⚠ Couldn’t read that file.'); }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- gist sync & edit lock ----------
+  function unlocked() { return !!(syncCfg && syncCfg.token && syncCfg.gistId); }
+  function applyLock() {
+    var on = unlocked();
+    document.body.classList.toggle('locked', !on);
+    $('addBtn').style.display = on ? '' : 'none';
+    $('importBtn').style.display = on ? '' : 'none';
+    $('syncBtn').textContent = on ? '🔓 Synced' : '🔒 Unlock';
+    $('disconnectBtn').style.display = on ? 'inline-block' : 'none';
+  }
+  function setDot(state) { $('syncDot').className = 'sync-dot' + (state ? ' ' + state : ''); }
+  function gh(path, method, body, token) {
+    var headers = { 'Accept': 'application/vnd.github+json' };
+    var t = token || (syncCfg && syncCfg.token);
+    if (t) headers['Authorization'] = 'Bearer ' + t;
+    return fetch('https://api.github.com' + path, {
+      method: method || 'GET',
+      headers: headers,
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      if (!r.ok) throw new Error('GitHub API ' + r.status);
+      return r.json();
+    });
+  }
+  function viewGistId() { return localStorage.getItem(VIEW_KEY) || null; }
+  function shareUrl() {
+    var id = unlocked() ? syncCfg.gistId : viewGistId();
+    return id ? location.origin + location.pathname + '?gist=' + id : '';
+  }
+  function payload() {
+    var savedAt = parseInt(localStorage.getItem(META_KEY) || '0', 10) || Date.now();
+    var files = {};
+    files[GIST_FILE] = { content: JSON.stringify({ app: 'recipe-box', savedAt: savedAt, recipes: recipes }) };
+    return files;
+  }
+  function connect() {
+    var token = $('sToken').value.trim();
+    var msg = $('syncMsg');
+    if (!token) { msg.className = 'err'; msg.textContent = 'Paste your token first.'; return; }
+    msg.className = ''; msg.textContent = 'Connecting to GitHub…';
+    gh('/gists', 'GET', null, token).then(function (list) {
+      var found = null;
+      (list || []).forEach(function (g) { if (!found && g.files && g.files[GIST_FILE]) found = g.id; });
+      if (found) return found;
+      return gh('/gists', 'POST', { description: 'Recipe Box data', public: false, files: payload() }, token)
+        .then(function (g) { return g.id; });
+    }).then(function (id) {
+      syncCfg = { token: token, gistId: id };
+      localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+      localStorage.setItem(VIEW_KEY, id);
+      applyLock();
+      $('syncOverlay').classList.remove('open');
+      $('sToken').value = '';
+      toast('Connected — editing unlocked ✓');
+      pull();
+    }).catch(function () {
+      msg.className = 'err';
+      msg.textContent = 'Couldn’t connect. Check the token is valid and has the “gist” scope.';
+    });
+  }
+  function disconnect() {
+    if (!confirm('Disconnect this device? Recipes stay in the Gist and on this device, but editing locks.')) return;
+    syncCfg = null;
+    localStorage.removeItem(SYNC_KEY);
+    applyLock();
+    setDot('');
+    $('syncOverlay').classList.remove('open');
+    toast('Disconnected — read-only mode');
+  }
+  function pull() {
+    var id = unlocked() ? syncCfg.gistId : viewGistId();
+    if (!id) return;
+    setDot('sync');
+    gh('/gists/' + id).then(function (g) {
+      var f = g.files && g.files[GIST_FILE];
+      if (!f) return;
+      var text = f.truncated
+        ? fetch(f.raw_url).then(function (r) { return r.text(); })
+        : Promise.resolve(f.content);
+      return text.then(function (t) {
+        var data = JSON.parse(t || '{}');
+        var localSaved = parseInt(localStorage.getItem(META_KEY) || '0', 10);
+        if (data && Array.isArray(data.recipes) && (data.savedAt || 0) > localSaved) {
+          recipes = data.recipes;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+          localStorage.setItem(META_KEY, String(data.savedAt));
+          render();
+        }
+      });
+    }).then(function () { setDot('ok'); })
+      .catch(function () { setDot('err'); });
+  }
+  function schedulePush() {
+    if (!unlocked()) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(push, 900);
+  }
+  function push() {
+    if (!unlocked()) return;
+    setDot('sync');
+    gh('/gists/' + syncCfg.gistId, 'PATCH', { files: payload() })
+      .then(function () { setDot('ok'); })
+      .catch(function () { setDot('err'); toast('⚠ Sync failed — changes saved on this device.'); });
+  }
+
+  // ---------- events ----------
+  $('addBtn').onclick = function () { openModal(); };
+  $('cancelBtn').onclick = closeModal;
+  $('saveBtn').onclick = saveRecipe;
+  $('deleteBtn').onclick = deleteRecipe;
+  $('fetchBtn').onclick = autoFetch;
+  $('exportBtn').onclick = doExport;
+  $('importBtn').onclick = function () { $('importFile').click(); };
+  $('importFile').onchange = function (e) { if (e.target.files[0]) doImport(e.target.files[0]); e.target.value = ''; };
+  $('modalOverlay').onclick = function (e) { if (e.target === this) closeModal(); };
+  $('syncBtn').onclick = function () {
+    $('syncMsg').textContent = '';
+    var su = shareUrl();
+    $('shareRow').style.display = su ? 'block' : 'none';
+    $('shareUrl').value = su;
+    $('syncOverlay').classList.add('open');
+    setTimeout(function () { $('sToken').focus(); }, 50);
+  };
+  $('copyShareBtn').onclick = function () {
+    var input = $('shareUrl');
+    input.select();
+    if (navigator.clipboard) { navigator.clipboard.writeText(input.value); }
+    else { document.execCommand('copy'); }
+    toast('Link copied ✓');
+  };
+  $('syncCancelBtn').onclick = function () { $('syncOverlay').classList.remove('open'); };
+  $('syncOverlay').onclick = function (e) { if (e.target === this) this.classList.remove('open'); };
+  $('connectBtn').onclick = connect;
+  $('disconnectBtn').onclick = disconnect;
+  $('sToken').addEventListener('keydown', function (e) { if (e.key === 'Enter') connect(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) pull(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeModal(); $('syncOverlay').classList.remove('open'); }
+  });
+  $('favFilter').onclick = function () {
+    favOnly = !favOnly;
+    this.classList.toggle('active', favOnly);
+    render();
+  };
+  $('search').oninput = render;
+  $('platformFilter').onchange = render;
+  $('sortBy').onchange = render;
+
+  // thumbnail: click to upload
+  $('thumbPreview').onclick = function () { $('fImage').click(); };
+  $('fImage').onchange = function (e) {
+    var f = e.target.files[0];
+    if (f) shrinkImage(f, function (dataUrl) {
+      pendingThumb = dataUrl;
+      $('thumbPreview').innerHTML = '<img src="' + dataUrl + '">';
+    });
+    e.target.value = '';
+  };
+  // thumbnail: paste image anywhere while modal is open
+  document.addEventListener('paste', function (e) {
+    if (!$('modalOverlay').classList.contains('open')) return;
+    var items = (e.clipboardData || {}).items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') === 0) {
+        e.preventDefault();
+        shrinkImage(items[i].getAsFile(), function (dataUrl) {
+          pendingThumb = dataUrl;
+          $('thumbPreview').innerHTML = '<img src="' + dataUrl + '">';
+          toast('Image pasted ✓');
+        });
+        return;
+      }
+    }
+  });
+
+  // ---------- init ----------
+  var qpGist = new URLSearchParams(location.search).get('gist');
+  if (qpGist && /^[\w]+$/.test(qpGist)) localStorage.setItem(VIEW_KEY, qpGist);
+  load();
+  applyLock();
+  render();
+  pull();
+})();
+</script>
+</body>
+</html>
