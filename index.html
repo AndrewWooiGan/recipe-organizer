@@ -74,6 +74,7 @@
   .platform.facebook { background: #1877f2; }
   .platform.tiktok { background: #111; }
   .platform.youtube { background: #f00; }
+  .platform.tokit { background: #0f9d8f; }
   .platform.other { background: #8a8378; }
   .tried-badge {
     position: absolute; top: 10px; right: 10px; background: #2e9e5b; color: #fff;
@@ -248,6 +249,7 @@
     <option value="facebook">Facebook</option>
     <option value="tiktok">TikTok</option>
     <option value="youtube">YouTube</option>
+    <option value="tokit">Tokit</option>
     <option value="other">Other</option>
   </select>
   <select id="sortBy">
@@ -466,10 +468,11 @@
     if (url.indexOf('facebook.com') > -1 || url.indexOf('fb.watch') > -1 || url.indexOf('fb.com') > -1) return 'facebook';
     if (url.indexOf('tiktok.com') > -1) return 'tiktok';
     if (url.indexOf('youtube.com') > -1 || url.indexOf('youtu.be') > -1) return 'youtube';
+    if (url.indexOf('tokit') > -1) return 'tokit';
     return 'other';
   }
   function platformEmoji(p) {
-    return { instagram: '📸', facebook: '👍', tiktok: '🎵', youtube: '▶️', other: '🔗' }[p] || '🔗';
+    return { instagram: '📸', facebook: '👍', tiktok: '🎵', youtube: '▶️', tokit: '🍲', other: '🔗' }[p] || '🔗';
   }
   function toast(msg) {
     var t = $('toast');
