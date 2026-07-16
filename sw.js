@@ -1,11 +1,13 @@
 /* Recipe Box service worker */
-var CACHE = 'recipe-box-v1';
+var CACHE = 'recipe-box-v2';
+var SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
 var SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  SDK_URL
 ];
 
 self.addEventListener('install', function (e) {
@@ -25,7 +27,21 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   var url = new URL(e.request.url);
 
-  // Never intercept API calls (GitHub sync, auto-fetch) — let them hit the network
+  // Supabase SDK from CDN: cache-first so the app opens offline
+  if (e.request.url === SDK_URL) {
+    e.respondWith(
+      caches.match(SDK_URL).then(function (hit) {
+        return hit || fetch(e.request).then(function (res) {
+          var copy = res.clone();
+          caches.open(CACHE).then(function (c) { c.put(SDK_URL, copy); });
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
+  // Never intercept other cross-origin calls (Supabase API, auto-fetch) — let them hit the network
   if (url.origin !== location.origin) return;
 
   // App shell: network-first so updates arrive, cache fallback for offline

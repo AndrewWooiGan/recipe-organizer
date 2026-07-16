@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Recipe Box">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root {
     --bg: #faf6f1;
@@ -369,31 +370,27 @@
   </div>
 </div>
 
-<!-- Sync / unlock modal -->
+<!-- Sign in modal -->
 <div class="overlay" id="syncOverlay">
   <div class="modal">
-    <h2>🔐 Sync &amp; Unlock</h2>
-    <p class="intro">Connect your GitHub account to unlock editing and sync recipes across your devices. Your data is stored in a <strong>private Gist</strong> only your token can read or change.</p>
-    <div class="field">
-      <label>GitHub token</label>
-      <input type="password" id="sToken" placeholder="ghp_…" autocomplete="off">
-      <div class="hint">Create a classic token with only the <strong>gist</strong> scope:
-        <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Recipe+Box" target="_blank" rel="noopener">github.com/settings/tokens</a>.
-        The app finds your existing recipe Gist or creates one automatically.</div>
-    </div>
-    <div class="field" id="shareRow" style="display:none">
-      <label>Share with family (view-only link)</label>
-      <div class="link-row">
-        <input type="text" id="shareUrl" readonly>
-        <button class="btn small" id="copyShareBtn" type="button">Copy</button>
+    <h2>🔐 Sign in</h2>
+    <p class="intro">Sign in to add and edit recipes. Everything syncs automatically across the family's devices.</p>
+    <div id="authForms">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="sEmail" autocomplete="username" placeholder="you@example.com">
       </div>
-      <div class="hint">Anyone with this link can browse and watch the recipes. To edit, they tap Unlock and enter the token — no other setup needed.</div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="sPassword" autocomplete="current-password">
+      </div>
     </div>
+    <div id="accountRow" class="hint" style="display:none;font-size:.9rem"></div>
     <div id="syncMsg"></div>
     <div class="modal-actions">
-      <button class="btn danger" id="disconnectBtn" style="display:none;margin-right:auto">Disconnect</button>
+      <button class="btn danger" id="signOutBtn" style="display:none;margin-right:auto">Sign out</button>
       <button class="btn" id="syncCancelBtn">Cancel</button>
-      <button class="btn primary" id="connectBtn">Connect</button>
+      <button class="btn primary" id="signInBtn">Sign in</button>
     </div>
   </div>
 </div>
@@ -431,10 +428,11 @@
 (function () {
   'use strict';
   var STORAGE_KEY = 'recipeBox.v1';
-  var SYNC_KEY = 'recipeBox.sync';
-  var META_KEY = 'recipeBox.savedAt';
-  var VIEW_KEY = 'recipeBox.viewGist';
-  var GIST_FILE = 'recipe-box.json';
+  var PENDING_KEY = 'recipeBox.pending.v1';
+  // ==== SUPABASE CONFIG — paste your project values here ====
+  var SUPABASE_URL = 'https://rzslbmueznxkyabzdgci.supabase.co';        // e.g. https://abcd1234.supabase.co
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6c2xibXVlem54a3lhYnpkZ2NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxNjU1MjYsImV4cCI6MjA5OTc0MTUyNn0.GGG9aZz5ORmoYxA6lGbn7WrDoG6f1UhfnC7eCU79lPU';       // Project Settings → API keys
+  // ==========================================================
   var PLAN_KEY = 'recipeBox.plan.v1';
   var PLANS_KEY = 'recipeBox.plans.v1';
   var SLOTS_FAMILY = [['breakfast', '🌅 Breakfast'], ['lunch', '☀️ Lunch'], ['dinner', '🌙 Dinner']];
@@ -451,9 +449,10 @@
   var pendingThumb = null;
   var activeTag = null;
   var favOnly = false;
-  var syncCfg = null;
-  var pushTimer = null;
-  try { syncCfg = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); } catch (e) {}
+  var sb = null;
+  var sessionUser = null;
+  var pending = [];
+  var flushing = false;
 
   // ---------- storage ----------
   function load() {
@@ -473,10 +472,8 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
       localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
-      localStorage.setItem(META_KEY, String(Date.now()));
     }
     catch (e) { toast('⚠ Storage full — export a backup and delete old entries.'); }
-    schedulePush();
   }
 
   // ---------- helpers ----------
@@ -662,6 +659,7 @@
         e.stopPropagation();
         r.fav = !r.fav;
         save(); render();
+        pushRecipe(r);
         toast(r.fav ? 'Added to favourites ❤️' : 'Removed from favourites');
       };
       grid.appendChild(card);
@@ -735,7 +733,7 @@
             item.querySelector('.plan-remove').onclick = function () {
               var p = plans[activePlan];
               p[dIso][slotKey] = p[dIso][slotKey].filter(function (x) { return x !== id; });
-              save(); renderPlan();
+              save(); pushPlan(activePlan); renderPlan();
             };
             slot.appendChild(item);
           });
@@ -779,6 +777,7 @@
         if (!plan[pickTarget.date][pickTarget.slot]) plan[pickTarget.date][pickTarget.slot] = [];
         plan[pickTarget.date][pickTarget.slot].push(r.id);
         save();
+        pushPlan(activePlan);
         $('pickerOverlay').classList.remove('open');
         pickTarget = null;
         renderPlan();
@@ -814,6 +813,7 @@
           if (!p[todayIso][slotDef[0]]) p[todayIso][slotDef[0]] = [];
           p[todayIso][slotDef[0]].push(r.id);
           save();
+          pushPlan(g[0]);
           b.textContent = '✓ ' + slotDef[1];
           b.disabled = true;
           toast('Added to ' + g[1] + ' · ' + slotDef[1] + ' today');
@@ -890,7 +890,10 @@
     };
     if (editingId) {
       var r = recipes.filter(function (x) { return x.id === editingId; })[0];
-      if (r) { Object.keys(data).forEach(function (k) { r[k] = data[k]; }); }
+      if (r) {
+        Object.keys(data).forEach(function (k) { r[k] = data[k]; });
+        pushRecipe(r);
+      }
       toast('Recipe updated ✓');
       save(); render(); closeModal();
       return;
@@ -899,12 +902,14 @@
     data.added = Date.now();
     recipes.unshift(data);
     save(); render(); closeModal();
+    pushRecipe(data);
     openConfirm(data);
   }
 
   function deleteRecipe() {
     if (!editingId) return;
     if (!confirm('Delete this recipe? This can’t be undone.')) return;
+    deleteRecipeRemote(editingId);
     recipes = recipes.filter(function (x) { return x.id !== editingId; });
     save(); render(); closeModal();
     toast('Recipe deleted');
@@ -935,124 +940,104 @@
             if (!r.added) r.added = Date.now();
             if (!r.platform) r.platform = detectPlatform(r.url);
             recipes.push(r); added++;
+            if (unlocked()) enqueue({ t: 'ur', d: r });
           }
         });
-        save(); render();
+        save(); render(); flushQueue();
         toast('Imported ' + added + ' recipe' + (added === 1 ? '' : 's') + ' ✓');
       } catch (err) { toast('⚠ Couldn’t read that file.'); }
     };
     reader.readAsText(file);
   }
 
-  // ---------- gist sync & edit lock ----------
-  function unlocked() { return !!(syncCfg && syncCfg.token && syncCfg.gistId); }
+  // ---------- supabase sync & auth ----------
+  function unlocked() { return !!sessionUser; }
   function applyLock() {
     var on = unlocked();
     document.body.classList.toggle('locked', !on);
     $('addBtn').style.display = on ? '' : 'none';
     $('importBtn').style.display = on ? '' : 'none';
-    $('syncBtn').textContent = on ? '🔓 Synced' : '🔒 Unlock';
-    $('disconnectBtn').style.display = on ? 'inline-block' : 'none';
+    $('syncBtn').textContent = on ? '🔓 Synced' : '🔒 Sign in';
   }
   function setDot(state) { $('syncDot').className = 'sync-dot' + (state ? ' ' + state : ''); }
-  function gh(path, method, body, token) {
-    var headers = { 'Accept': 'application/vnd.github+json' };
-    var t = token || (syncCfg && syncCfg.token);
-    if (t) headers['Authorization'] = 'Bearer ' + t;
-    return fetch('https://api.github.com' + path, {
-      method: method || 'GET',
-      headers: headers,
-      body: body ? JSON.stringify(body) : undefined
-    }).then(function (r) {
-      if (!r.ok) throw new Error('GitHub API ' + r.status);
-      return r.json();
-    });
+
+  // offline-safe write queue (persisted so nothing is lost if you close the app)
+  function loadPending() {
+    try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]') || []; }
+    catch (e) { pending = []; }
   }
-  function viewGistId() { return localStorage.getItem(VIEW_KEY) || null; }
-  function shareUrl() {
-    var id = unlocked() ? syncCfg.gistId : viewGistId();
-    return id ? location.origin + location.pathname + '?gist=' + id : '';
-  }
-  function payload() {
-    var savedAt = parseInt(localStorage.getItem(META_KEY) || '0', 10) || Date.now();
-    var files = {};
-    files[GIST_FILE] = { content: JSON.stringify({ app: 'recipe-box', savedAt: savedAt, recipes: recipes, plans: plans }) };
-    return files;
-  }
-  function connect() {
-    var token = $('sToken').value.trim();
-    var msg = $('syncMsg');
-    if (!token) { msg.className = 'err'; msg.textContent = 'Paste your token first.'; return; }
-    msg.className = ''; msg.textContent = 'Connecting to GitHub…';
-    gh('/gists', 'GET', null, token).then(function (list) {
-      var found = null;
-      (list || []).forEach(function (g) { if (!found && g.files && g.files[GIST_FILE]) found = g.id; });
-      if (found) return found;
-      return gh('/gists', 'POST', { description: 'Recipe Box data', public: false, files: payload() }, token)
-        .then(function (g) { return g.id; });
-    }).then(function (id) {
-      syncCfg = { token: token, gistId: id };
-      localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
-      localStorage.setItem(VIEW_KEY, id);
-      applyLock();
-      $('syncOverlay').classList.remove('open');
-      $('sToken').value = '';
-      toast('Connected — editing unlocked ✓');
-      pull();
-    }).catch(function () {
-      msg.className = 'err';
-      msg.textContent = 'Couldn’t connect. Check the token is valid and has the “gist” scope.';
-    });
-  }
-  function disconnect() {
-    if (!confirm('Disconnect this device? Recipes stay in the Gist and on this device, but editing locks.')) return;
-    syncCfg = null;
-    localStorage.removeItem(SYNC_KEY);
-    applyLock();
-    setDot('');
-    $('syncOverlay').classList.remove('open');
-    toast('Disconnected — read-only mode');
-  }
-  function pull() {
-    var id = unlocked() ? syncCfg.gistId : viewGistId();
-    if (!id) return;
+  function persistPending() { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); }
+  function enqueue(op) { pending.push(op); persistPending(); }
+  function flushQueue() {
+    if (!sb || !sessionUser || flushing || !pending.length) return Promise.resolve();
+    flushing = true;
     setDot('sync');
-    gh('/gists/' + id).then(function (g) {
-      var f = g.files && g.files[GIST_FILE];
-      if (!f) return;
-      var text = f.truncated
-        ? fetch(f.raw_url).then(function (r) { return r.text(); })
-        : Promise.resolve(f.content);
-      return text.then(function (t) {
-        var data = JSON.parse(t || '{}');
-        var localSaved = parseInt(localStorage.getItem(META_KEY) || '0', 10);
-        if (data && Array.isArray(data.recipes) && (data.savedAt || 0) > localSaved) {
-          recipes = data.recipes;
-          if (data.plans && typeof data.plans === 'object') {
-            plans = { family: data.plans.family || {}, baby: data.plans.baby || {} };
-          } else if (data.plan && typeof data.plan === 'object') {
-            plans = { family: data.plan, baby: {} };
-          }
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
-          localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
-          localStorage.setItem(META_KEY, String(data.savedAt));
-          render();
-        }
+    function step() {
+      if (!pending.length) return Promise.resolve();
+      var op = pending[0], q;
+      if (op.t === 'ur') q = sb.from('recipes').upsert({ id: op.d.id, data: op.d });
+      else if (op.t === 'dr') q = sb.from('recipes').delete().eq('id', op.d);
+      else q = sb.from('meal_plans').upsert({ key: op.k, data: op.d });
+      return q.then(function (res) {
+        if (res.error) throw res.error;
+        pending.shift(); persistPending();
+        return step();
       });
-    }).then(function () { setDot('ok'); })
-      .catch(function () { setDot('err'); });
+    }
+    return step().then(function () { flushing = false; setDot('ok'); })
+      .catch(function () { flushing = false; setDot('err'); });
   }
-  function schedulePush() {
-    if (!unlocked()) return;
-    clearTimeout(pushTimer);
-    pushTimer = setTimeout(push, 900);
-  }
-  function push() {
-    if (!unlocked()) return;
+  function pushRecipe(r) { if (!unlocked()) return; enqueue({ t: 'ur', d: r }); flushQueue(); }
+  function deleteRecipeRemote(id) { if (!unlocked()) return; enqueue({ t: 'dr', d: id }); flushQueue(); }
+  function pushPlan(key) { if (!unlocked()) return; enqueue({ t: 'up', k: key, d: plans[key] }); flushQueue(); }
+
+  function pullAll() {
+    if (!sb || !sessionUser) return Promise.resolve();
+    if (pending.length) return Promise.resolve(); // don't overwrite unpushed edits
     setDot('sync');
-    gh('/gists/' + syncCfg.gistId, 'PATCH', { files: payload() })
-      .then(function () { setDot('ok'); })
-      .catch(function () { setDot('err'); toast('⚠ Sync failed — changes saved on this device.'); });
+    return Promise.all([
+      sb.from('recipes').select('data'),
+      sb.from('meal_plans').select('key,data')
+    ]).then(function (res) {
+      if (res[0].error || res[1].error) throw (res[0].error || res[1].error);
+      var serverRecipes = (res[0].data || []).map(function (x) { return x.data; });
+      if (serverRecipes.length === 0 && recipes.length > 0) {
+        // first login on a device that has data: migrate it to the database
+        recipes.forEach(function (r) { enqueue({ t: 'ur', d: r }); });
+        enqueue({ t: 'up', k: 'family', d: plans.family });
+        enqueue({ t: 'up', k: 'baby', d: plans.baby });
+        toast('Migrating your recipes to the database…');
+        return flushQueue();
+      }
+      recipes = serverRecipes.sort(function (a, b) { return (b.added || 0) - (a.added || 0); });
+      (res[1].data || []).forEach(function (row) {
+        if (row.key === 'family' || row.key === 'baby') plans[row.key] = row.data || {};
+      });
+      save();
+      render();
+      setDot('ok');
+    }).catch(function () { setDot('err'); });
+  }
+
+  function signIn() {
+    var msg = $('syncMsg');
+    if (!sb) { msg.className = 'err'; msg.textContent = 'App is not configured with Supabase yet.'; return; }
+    var email = $('sEmail').value.trim(), pw = $('sPassword').value;
+    if (!email || !pw) { msg.className = 'err'; msg.textContent = 'Enter your email and password.'; return; }
+    msg.className = ''; msg.textContent = 'Signing in…';
+    sb.auth.signInWithPassword({ email: email, password: pw }).then(function (res) {
+      if (res.error) { msg.className = 'err'; msg.textContent = res.error.message; return; }
+      $('syncOverlay').classList.remove('open');
+      $('sPassword').value = '';
+      toast('Signed in ✓');
+    });
+  }
+  function signOut() {
+    if (!confirm('Sign out on this device? Recipes stay in the database.')) return;
+    if (sb) sb.auth.signOut();
+    $('syncOverlay').classList.remove('open');
+    setDot('');
+    toast('Signed out');
   }
 
   // ---------- events ----------
@@ -1066,26 +1051,25 @@
   $('importFile').onchange = function (e) { if (e.target.files[0]) doImport(e.target.files[0]); e.target.value = ''; };
   $('modalOverlay').onclick = function (e) { if (e.target === this) closeModal(); };
   $('syncBtn').onclick = function () {
-    $('syncMsg').textContent = '';
-    var su = shareUrl();
-    $('shareRow').style.display = su ? 'block' : 'none';
-    $('shareUrl').value = su;
+    var on = unlocked();
+    $('syncMsg').textContent = ''; $('syncMsg').className = '';
+    $('authForms').style.display = on ? 'none' : 'block';
+    $('signInBtn').style.display = on ? 'none' : 'inline-block';
+    $('signOutBtn').style.display = on ? 'inline-block' : 'none';
+    $('accountRow').style.display = on ? 'block' : 'none';
+    if (on) $('accountRow').textContent = 'Signed in as ' + (sessionUser.email || '');
     $('syncOverlay').classList.add('open');
-    setTimeout(function () { $('sToken').focus(); }, 50);
-  };
-  $('copyShareBtn').onclick = function () {
-    var input = $('shareUrl');
-    input.select();
-    if (navigator.clipboard) { navigator.clipboard.writeText(input.value); }
-    else { document.execCommand('copy'); }
-    toast('Link copied ✓');
+    if (!on) setTimeout(function () { $('sEmail').focus(); }, 50);
   };
   $('syncCancelBtn').onclick = function () { $('syncOverlay').classList.remove('open'); };
   $('syncOverlay').onclick = function (e) { if (e.target === this) this.classList.remove('open'); };
-  $('connectBtn').onclick = connect;
-  $('disconnectBtn').onclick = disconnect;
-  $('sToken').addEventListener('keydown', function (e) { if (e.key === 'Enter') connect(); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) pull(); });
+  $('signInBtn').onclick = signIn;
+  $('signOutBtn').onclick = signOut;
+  $('sPassword').addEventListener('keydown', function (e) { if (e.key === 'Enter') signIn(); });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) flushQueue().then(pullAll);
+  });
+  window.addEventListener('online', function () { flushQueue().then(pullAll); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       closeModal();
@@ -1148,13 +1132,21 @@
   });
 
   // ---------- init ----------
-  var qpGist = new URLSearchParams(location.search).get('gist');
-  if (qpGist && /^[\w]+$/.test(qpGist)) localStorage.setItem(VIEW_KEY, qpGist);
   cursor = new Date();
   load();
+  loadPending();
   applyLock();
   render();
-  pull();
+  try {
+    if (window.supabase && SUPABASE_URL.indexOf('http') === 0) {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      sb.auth.onAuthStateChange(function (_event, session) {
+        sessionUser = session ? session.user : null;
+        applyLock();
+        if (sessionUser) flushQueue().then(pullAll);
+      });
+    }
+  } catch (e) { /* not configured yet — app works locally */ }
 
   // ---------- PWA service worker ----------
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
